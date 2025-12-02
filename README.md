@@ -4,18 +4,20 @@ Automated title synchronization for XUI-One IPTV panel.
 
 ## Install
 
+Must be run as root:
+
 ```bash
 chmod +x installer.sh
-./installer.sh
+sudo ./installer.sh
 ```
 
 ## Manual Run
 
 ```bash
-./title_sync.sh
+sudo ./title_sync.sh
 ```
 
-Log files saved inside the same directory:
+Logs (in same directory):
 
-- `sync.log` – info log (only last 7 days kept if Python3 is available, otherwise last 20 runs)
-- `provider.json` – latest provider response snapshot
+- `sync.log` – human-readable info log (newest at top, 7 days kept if Python3 OK, otherwise last 20 runs)
+- `provider.json` – latest provider response snapshot (overwritten each run)

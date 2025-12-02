@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # XUI-One Title Sync Script
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -9,13 +8,11 @@ if [ ! -f "$BASE_DIR/config.env" ]; then
   exit 1
 fi
 
-# shellcheck source=/dev/null
 . "$BASE_DIR/config.env"
 
 LOGFILE="$BASE_DIR/sync.log"
 PROVIDER_DEBUG="$BASE_DIR/provider.json"
 
-# Fetch provider JSON
 PROVIDER_JSON="$(curl -s "${PROVIDER_URL}?username=${PROVIDER_USER}&password=${PROVIDER_PASS}&action=get_live_streams")"
 
 if [ -z "$PROVIDER_JSON" ] || [ "$PROVIDER_JSON" = "null" ]; then
@@ -23,7 +20,6 @@ if [ -z "$PROVIDER_JSON" ] || [ "$PROVIDER_JSON" = "null" ]; then
   exit 1
 fi
 
-# Save provider snapshot
 echo "$PROVIDER_JSON" > "$PROVIDER_DEBUG"
 
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -37,7 +33,6 @@ echo "" >> "$TEMPLOG"
 
 UPDATED=0
 
-# Mapping provider_stream_id -> local stream_id
 MAPPING="$(mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" -D"$DB_NAME" -N -e 'SELECT provider_stream_id, stream_id FROM providers_streams;')"
 
 IFS=$'\n'
@@ -55,7 +50,7 @@ for ROW in $MAPPING; do
   LNAME="$(mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" -D"$DB_NAME" -N -e "SELECT stream_display_name FROM streams WHERE id=$LID;")"
 
   if [ "$PNAME" != "$LNAME" ]; then
-    SAFE_PNAME="$(echo "$PNAME" | sed "s/'/\\\\'/g")"
+    SAFE_PNAME="$(echo "$PNAME" | sed "s/'/\\'/g")"
     mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" -D"$DB_NAME" -e "UPDATE streams SET stream_display_name='$SAFE_PNAME' WHERE id=$LID;"
     echo "  • Stream $LID: \"$LNAME\" → \"$PNAME\"" >> "$TEMPLOG"
     UPDATED=$((UPDATED+1))
@@ -72,7 +67,6 @@ echo "────────────────────────�
 echo "" >> "$TEMPLOG"
 echo "" >> "$TEMPLOG"
 
-# Prepend new block to sync.log
 if [ -f "$LOGFILE" ]; then
   cp "$LOGFILE" "$BASE_DIR/.old_sync.log"
   cat "$TEMPLOG" "$BASE_DIR/.old_sync.log" > "$LOGFILE"
@@ -83,7 +77,6 @@ fi
 
 rm -f "$TEMPLOG"
 
-# Log rotation
 if [ "${USE_PYTHON_ROTATION:-0}" = "1" ] && command -v python3 >/dev/null 2>&1; then
   python3 - "$LOGFILE" << 'EOF'
 import sys, datetime, re
@@ -133,7 +126,6 @@ with open(logfile, "w", encoding="utf-8") as f:
     f.write("\n".join(out_lines).rstrip() + "\n")
 EOF
 else
-  # Fallback: keep last 20 sync blocks if python3 not available
   TMPBLOCKS="$BASE_DIR/.blocks"
   grep -n "^TITLE SYNC — " "$LOGFILE" | cut -d: -f1 > "$TMPBLOCKS" 2>/dev/null || true
   TOTAL="$(wc -l < "$TMPBLOCKS" 2>/dev/null || echo 0)"

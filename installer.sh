@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # XUI-One Title Sync Installer
 
 GREEN="\e[32m"
@@ -7,11 +6,15 @@ YELLOW="\e[33m"
 RED="\e[31m"
 RESET="\e[0m"
 
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${RED}This installer must be run as root (sudo).${RESET}"
+  exit 1
+fi
+
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo -e "${GREEN}=== XUI-One Title Sync Installer ===${RESET}"
 
-# 1) Auto-detect DB credentials from */xuione/credentials.txt
 CRED_FILE="$(find / -type f -path "*/xuione/credentials.txt" 2>/dev/null | head -1)"
 
 DB_USER=""
@@ -26,15 +29,13 @@ else
   echo -e "${RED}No xuione/credentials.txt found. DB credentials will be left as placeholders in config.env.${RESET}"
 fi
 
-# 2) Ask for provider details
 echo -e "${YELLOW}Please enter your Provider (XC) details.${RESET}"
 read -p "Provider URL (example: 144.76.200.209 or example.com): " PURL_RAW
 PURL="http://${PURL_RAW}/player_api.php"
 
 read -p "Provider Username: " PUSR
-read -p "Provider Password: " PPASS"
+read -p "Provider Password: " PPASS
 
-# 3) Live provider connection test
 echo -e "${YELLOW}Testing provider connection...${RESET}"
 CHECK="$(curl -s "${PURL}?username=${PUSR}&password=${PPASS}")"
 
@@ -45,7 +46,6 @@ else
   exit 1
 fi
 
-# 4) Ask how often to run the sync
 echo -e "${YELLOW}How often should auto-sync run?${RESET}"
 echo "1) Every 5 minutes"
 echo "2) Every 15 minutes"
@@ -65,7 +65,6 @@ case "$OPT" in
   *) echo -e "${RED}Invalid option. Aborting.${RESET}"; exit 1 ;;
 esac
 
-# 5) Ensure jq is installed
 if ! command -v jq >/dev/null 2>&1; then
   echo -e "${YELLOW}jq not found. Installing...${RESET}"
   apt update && apt install -y jq
@@ -73,7 +72,6 @@ else
   echo -e "${GREEN}jq already installed.${RESET}"
 fi
 
-# 6) Ensure python3 is installed and sane
 USE_PYTHON_ROTATION=0
 if ! command -v python3 >/dev/null 2>&1; then
   echo -e "${YELLOW}python3 not found. Trying to install...${RESET}"
@@ -98,7 +96,6 @@ else
   USE_PYTHON_ROTATION=0
 fi
 
-# 7) Create config.env
 CONFIG_FILE="$BASE_DIR/config.env"
 
 cat > "$CONFIG_FILE" <<EOF
@@ -116,16 +113,14 @@ EOF
 
 echo -e "${GREEN}config.env created at: $CONFIG_FILE${RESET}"
 
-# 8) Make title_sync.sh executable
 chmod +x "$BASE_DIR/title_sync.sh"
 
-# 9) Install cronjob
 CRONLINE="${INTERVAL} ${BASE_DIR}/title_sync.sh >/dev/null 2>&1"
-echo -e "${YELLOW}Installing cronjob...${RESET}"
-( crontab -l 2>/dev/null | grep -v 'title_sync.sh' ; echo "$CRONLINE" ) | crontab -
+echo -e "${YELLOW}Installing cronjob for root...${RESET}"
+( crontab -u root -l 2>/dev/null | grep -v 'title_sync.sh' ; echo "$CRONLINE" ) | crontab -u root -
 
 echo -e "${GREEN}Installation complete.${RESET}"
 echo -e "${YELLOW}Cron job will run with interval: $INTERVAL${RESET}"
-echo -e "${YELLOW}Cron file location (for root user): /var/spool/cron/crontabs/root${RESET}"
+echo -e "${YELLOW}Cron file location (root): /var/spool/cron/crontabs/root${RESET}"
 echo -e "${YELLOW}Info log: ${BASE_DIR}/sync.log${RESET}"
 echo -e "${YELLOW}Provider debug JSON: ${BASE_DIR}/provider.json${RESET}"
