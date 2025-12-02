@@ -1,4 +1,3 @@
-\
 # XUI-One Auto Title Sync (cron.d version)
 
 Automated title synchronization for XUI-One IPTV panel.
