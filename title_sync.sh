@@ -1,4 +1,3 @@
-\
 #!/bin/bash
 # XUI-One Title Sync Script
 
