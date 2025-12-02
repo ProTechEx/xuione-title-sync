@@ -2,6 +2,14 @@
 
 Automated title synchronization for XUI-One IPTV panel.
 
+## Git Clone
+
+Clone the Repo:
+
+```bash
+git clone https://github.com/ProTechEx/xuione-title-sync.git && cd xuione-title-sync
+```
+
 ## Install
 
 Must be run as root:
