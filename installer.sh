@@ -1,69 +1,64 @@
-#!/bin/sh
-# XUI-One Title Sync Installer (cron.d compatible)
+#!/bin/bash
+# XUI-One Title Sync Installer (using /etc/cron.d)
 
-GREEN="\033[32m"
-YELLOW="\033[33m"
-RED="\033[31m"
-RESET="\033[0m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+RED="\e[31m"
+RESET="\e[0m"
 
 # Must be run as root
-if [ "$(id -u)" -ne 0 ]; then
-  printf "%sThis installer must be run as root (sudo).%s\n" "$RED" "$RESET"
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${RED}This installer must be run as root (sudo).${RESET}"
   exit 1
 fi
 
-BASE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-printf "%s=== XUI-One Title Sync Installer ===%s\n" "$GREEN" "$RESET"
+echo -e "${GREEN}=== XUI-One Title Sync Installer ===${RESET}"
 
-# 1) Auto-detect DB credentials
-CRED_FILE="$(find / -type f -path "*/xuione/credentials.txt" 2>/dev/null | head -n 1)"
+# 1) Auto-detect DB credentials from */xuione/credentials.txt
+CRED_FILE="$(find / -type f -path "*/xuione/credentials.txt" 2>/dev/null | head -1)"
 
 DB_USER=""
 DB_PASS=""
 
-if [ -n "$CRED_FILE" ]; then
-  printf "%sFound credentials file at: %s%s\n" "$YELLOW" "$CRED_FILE" "$RESET"
+if [[ -n "$CRED_FILE" ]]; then
+  echo -e "${YELLOW}Found credentials file at: $CRED_FILE${RESET}"
   DB_USER="$(grep -i 'MySQL Username' "$CRED_FILE" | awk -F': ' '{print $2}')"
   DB_PASS="$(grep -i 'MySQL Password' "$CRED_FILE" | awk -F': ' '{print $2}')"
-  printf "%sUsing DB user: %s%s\n" "$YELLOW" "$DB_USER" "$RESET"
+  echo -e "${YELLOW}Using DB user: $DB_USER${RESET}"
 else
-  printf "%sNo xuione/credentials.txt found. Credentials will be placeholders.%s\n" "$RED" "$RESET"
+  echo -e "${RED}No xuione/credentials.txt found. DB credentials will be left as placeholders in config.env.${RESET}"
 fi
 
-# 2) Provider details
-printf "%sPlease enter your Provider (XC) details.%s\n" "$YELLOW" "$RESET"
-printf "Provider URL (IP/domain only): "
-read PURL_RAW
-PURL="http://$PURL_RAW/player_api.php"
+# 2) Ask for provider details
+echo -e "${YELLOW}Please enter your Provider (XC) details.${RESET}"
+read -p "Provider URL (example: 144.76.200.209 or example.com): " PURL_RAW
+PURL="http://${PURL_RAW}/player_api.php"
 
-printf "Provider Username: "
-read PUSR
-printf "Provider Password: "
-read PPASS
+read -p "Provider Username: " PUSR
+read -p "Provider Password: " PPASS
 
 # 3) Live provider connection test
-printf "%sTesting provider connection...%s\n" "$YELLOW" "$RESET"
+echo -e "${YELLOW}Testing provider connection...${RESET}"
 CHECK="$(curl -s "${PURL}?username=${PUSR}&password=${PPASS}")"
 
-echo "$CHECK" | grep -q "user_info"
-if [ $? -eq 0 ]; then
-  printf "%sProvider authentication OK.%s\n" "$GREEN" "$RESET"
+if [[ "$CHECK" == *"user_info"* ]]; then
+  echo -e "${GREEN}Provider authentication OK.${RESET}"
 else
-  printf "%sProvider connection FAILED. Check credentials.%s\n" "$RED" "$RESET"
+  echo -e "${RED}Provider connection FAILED. Please check URL/username/password and try again.${RESET}"
   exit 1
 fi
 
-# 4) Sync interval selection
-printf "%sHow often should auto-sync run?%s\n" "$YELLOW" "$RESET"
-printf "1) Every 5 minutes\n"
-printf "2) Every 15 minutes\n"
-printf "3) Every 30 minutes\n"
-printf "4) Every hour\n"
-printf "5) Every 12 hours\n"
-printf "6) Every 24 hours\n"
-printf "Select option (1-6): "
-read OPT
+# 4) Ask how often to run the sync
+echo -e "${YELLOW}How often should auto-sync run?${RESET}"
+echo "1) Every 5 minutes"
+echo "2) Every 15 minutes"
+echo "3) Every 30 minutes"
+echo "4) Every hour"
+echo "5) Every 12 hours"
+echo "6) Every 24 hours"
+read -p "Select option (1-6): " OPT
 
 case "$OPT" in
   1) INTERVAL="*/5 * * * *" ;;
@@ -72,36 +67,40 @@ case "$OPT" in
   4) INTERVAL="0 * * * *" ;;
   5) INTERVAL="0 */12 * * *" ;;
   6) INTERVAL="0 0 * * *" ;;
-  *) 
-     printf "%sInvalid option. Aborting.%s\n" "$RED" "$RESET"
-     exit 1
-  ;;
+  *) echo -e "${RED}Invalid option. Aborting.${RESET}"; exit 1 ;;
 esac
 
-# 5) Install jq if missing
+# 5) Ensure jq is installed
 if ! command -v jq >/dev/null 2>&1; then
-  printf "%sInstalling jq...%s\n" "$YELLOW" "$RESET"
+  echo -e "${YELLOW}jq not found. Installing...${RESET}"
   apt update && apt install -y jq
 else
-  printf "%sjq already installed.%s\n" "$GREEN" "$RESET"
+  echo -e "${GREEN}jq already installed.${RESET}"
 fi
 
-# 6) Python test for rotation
+# 6) Ensure python3 is installed and sane
 USE_PYTHON_ROTATION=0
+if ! command -v python3 >/dev/null 2>&1; then
+  echo -e "${YELLOW}python3 not found. Trying to install...${RESET}"
+  apt update && apt install -y python3 || echo -e "${RED}Failed to install python3.${RESET}"
+fi
 
 if command -v python3 >/dev/null 2>&1; then
-  printf "%sRunning python3 sanity test...%s\n" "$YELLOW" "$RESET"
-  python3 - <<EOF >/dev/null 2>&1
-import re, datetime
+  echo -e "${YELLOW}Running python3 sanity test...${RESET}"
+  if python3 - << 'EOF'
+import sys, datetime, re
+print("OK")
 EOF
-  if [ $? -eq 0 ]; then
+  then
+    echo -e "${GREEN}Python3 sanity test OK. Using Python-based log rotation.${RESET}"
     USE_PYTHON_ROTATION=1
-    printf "%sPython3 sanity test OK.%s\n" "$GREEN" "$RESET"
   else
-    printf "%sPython3 test FAILED. Using fallback log rotation.%s\n" "$RED" "$RESET"
+    echo -e "${RED}Python3 sanity test FAILED. Fallback log rotation will be used.${RESET}"
+    USE_PYTHON_ROTATION=0
   fi
 else
-  printf "%spython3 missing. Using fallback log rotation.%s\n" "$RED" "$RESET"
+  echo -e "${RED}python3 is not available. Fallback log rotation will be used.${RESET}"
+  USE_PYTHON_ROTATION=0
 fi
 
 # 7) Create config.env
@@ -117,20 +116,19 @@ DB_USER="${DB_USER:-YOUR_XUIONE_USER}"
 DB_PASS="${DB_PASS:-YOUR_XUIONE_USER_DB_PASSWORD}"
 DB_NAME="xui"
 
-USE_PYTHON_ROTATION="$USE_PYTHON_ROTATION"
+USE_PYTHON_ROTATION="${USE_PYTHON_ROTATION}"
 EOF
 
-printf "%sconfig.env created at: %s%s\n" "$GREEN" "$CONFIG_FILE" "$RESET"
+echo -e "${GREEN}config.env created at: $CONFIG_FILE${RESET}"
 
-# 8) Make main script executable
+# 8) Make title_sync.sh executable
 chmod +x "$BASE_DIR/title_sync.sh"
 
-# 9) Install cron via /etc/cron.d
+# 9) Install cronjob via /etc/cron.d
 CRON_FILE="/etc/cron.d/xuione-title-sync"
 CRONLINE="${INTERVAL} root ${BASE_DIR}/title_sync.sh >/dev/null 2>&1"
 
-printf "%sInstalling cron job in /etc/cron.d...%s\n" "$YELLOW" "$RESET"
-
+echo -e "${YELLOW}Installing /etc/cron.d entry at: ${CRON_FILE}${RESET}"
 {
   echo "# XUI-One Title Sync"
   echo "$CRONLINE"
@@ -139,6 +137,8 @@ printf "%sInstalling cron job in /etc/cron.d...%s\n" "$YELLOW" "$RESET"
 chmod 644 "$CRON_FILE"
 chown root:root "$CRON_FILE"
 
-printf "%sInstallation complete!%s\n" "$GREEN" "$RESET"
-printf "%sCron file: %s%s\n" "$YELLOW" "$CRON_FILE" "$RESET"
-printf "%sLogs: %s/sync.log%s\n" "$YELLOW" "$BASE_DIR" "$RESET"
+echo -e "${GREEN}Installation complete.${RESET}"
+echo -e "${YELLOW}Cron will run with interval: $INTERVAL${RESET}"
+echo -e "${YELLOW}Cron config file: ${CRON_FILE}${RESET}"
+echo -e "${YELLOW}Info log: ${BASE_DIR}/sync.log${RESET}"
+echo -e "${YELLOW}Provider debug JSON: ${BASE_DIR}/provider.json${RESET}"
