@@ -15,8 +15,7 @@ git clone https://github.com/ProTechEx/xuione-title-sync.git && cd xuione-title-
 Must be run as root:
 
 ```bash
-chmod +x installer.sh
-sudo ./installer.sh
+chmod +x installer.sh && ./installer.sh
 ```
 
 The installer will:
